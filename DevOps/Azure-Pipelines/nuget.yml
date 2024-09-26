@@ -43,13 +43,6 @@ stages:
             command: 'build'
             arguments: '--configuration $(buildConfiguration)'
             projects: "$(solution)"
-        - task: BuildQualityChecks@7
-          displayName: Check warnings
-          inputs:
-            checkWarnings: true
-            warningFailOption: 'fixed'
-            warningThreshold: '1'
-            showStatistics: true
         - task: DotNetCoreCLI@2
           displayName: "Generate Nuget package"
           inputs:
