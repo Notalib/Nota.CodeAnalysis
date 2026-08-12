@@ -144,8 +144,12 @@ Releases are cut by tagging:
 git tag -a v2.3.0 -m "Nota.CodeAnalysis 2.3.0" && git push origin v2.3.0
 ```
 
-The tag is the version, so nothing in the repository can disagree with what shipped. `<Version>` in
-the csproj is only a local default, for anyone packing by hand.
+[MinVer](https://github.com/adamralph/minver) derives the package version from that tag on every
+build, so nothing in the repository can disagree with what shipped - there is no `<Version>` to edit
+or forget to bump. Building straight off a tagged commit gets that tag's version exactly; anything
+else gets the next patch as a pre-release with the commit count above the tag, e.g. `2.3.1-alpha.0.4`.
+CI checks out full history (`fetch-depth: 0`) so MinVer can see the tags at all - a shallow clone has
+none, and would fall back to `0.0.0-alpha.0`.
 
 Merging to `main` builds and verifies but does not publish, and neither do pull requests - releasing
 is a separate act from merging.

@@ -40,10 +40,14 @@ mkdir -p "$feed" "$app"
 # whatever 2.2.0 was extracted first - the change under test never reaches the consumer. That is not
 # hypothetical; this script gave a clean pass against a regression it was written to catch, until the
 # version was made unique.
+#
+# MinVerVersionOverride, not -p:Version - MinVer computes Version itself from the git tag and
+# overwrites whatever was passed in, so -p:Version here would be silently ignored and every run
+# would collide on the same version, reviving the exact bug this comment describes.
 version="0.0.0-verify.$(date +%Y%m%d%H%M%S)"
 
 printf 'Packing %s...\n' "$version"
-dotnet pack "$root/Nota.CodeAnalysis.sln" --configuration Release --output "$feed" -p:Version="$version" >"$work/pack.log" 2>&1 || {
+dotnet pack "$root/Nota.CodeAnalysis.sln" --configuration Release --output "$feed" -p:MinVerVersionOverride="$version" >"$work/pack.log" 2>&1 || {
     printf 'pack failed:\n' >&2
     cat "$work/pack.log" >&2
     exit 1

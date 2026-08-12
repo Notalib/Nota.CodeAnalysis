@@ -32,6 +32,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # MinVer derives the version from git tags and the commit count above them, so it needs the
+          # actual history rather than actions/checkout's default shallow clone - which contains no
+          # tags to find.
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -41,17 +46,13 @@ jobs:
           # build with, and testing on what people use beats testing on the oldest thing that works.
           dotnet-version: '10.x'
 
-      # On a tag the tag is the version, so nothing in the repository can disagree with what shipped.
-      # Off a tag this is unset and expands to nothing, leaving the csproj's own <Version> - which is
-      # then only ever a local default, never the thing that gets published.
-      - name: Take the version from the tag
-        if: github.ref_type == 'tag'
-        run: echo "VERSION_ARG=-p:Version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-
       # No NuGet.config and no secure file: every dependency is public on nuget.org. The Azure
       # pipeline this replaced downloaded a secure NuGet.config it did not need.
+      #
+      # No -p:Version here: MinVer sets it from the git tag (and the commit count above one, off a
+      # tag), so nothing in the repository can disagree with what shipped.
       - name: Build
-        run: dotnet build Nota.CodeAnalysis.sln --configuration Release $VERSION_ARG
+        run: dotnet build Nota.CodeAnalysis.sln --configuration Release
 
       - name: Verify the rules report
         run: ./Nota.CodeAnalysis.Verification/verify.sh
@@ -67,7 +68,7 @@ jobs:
         run: ./Nota.CodeAnalysis.Verification/verify-package.sh
 
       - name: Pack
-        run: dotnet pack Nota.CodeAnalysis.sln --configuration Release --no-build --output artifacts $VERSION_ARG
+        run: dotnet pack Nota.CodeAnalysis.sln --configuration Release --no-build --output artifacts
 
       # Kept even on a pull request, so a packaging mistake is visible without merging.
       - name: Upload the package
