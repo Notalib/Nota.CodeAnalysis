@@ -84,6 +84,42 @@ The encoding check is a build task rather than a diagnostic, so it has its own s
 <NotaValidateSourceEncoding>false</NotaValidateSourceEncoding>
 ```
 
+## Upgrading from 2.1
+
+`SA1412`, which required every source file to carry a byte order mark, is off. It never did anything
+for the build - a file without a mark compiles fine, since the compiler assumes UTF-8 when none is
+present - and what it was quietly protecting against is now `NOTA0001`'s job, which checks the bytes
+rather than the mark.
+
+Nothing forces you to remove the marks you have. If you want to, `tools/de-bom.sh` does it a tree at
+a time:
+
+```sh
+tools/de-bom.sh /path/to/repo            # report, change nothing
+tools/de-bom.sh /path/to/repo --apply    # do it
+```
+
+It reports by default, refuses to run on a dirty tree so the result is one revertible commit, and
+leaves UTF-16 files alone - their mark is the only record of the encoding, and removing it destroys
+the file. Afterwards, every changed file should differ by exactly one line:
+
+```sh
+git diff --numstat | awk '$1 != 1 || $2 != 1'
+```
+
+Silence means nothing but marks moved.
+
+Two things in that order, and both bite if you get them wrong.
+
+**Take 2.2 first.** On 2.1.x `SA1412` still demands a mark, so stripping them before upgrading breaks
+the build on every file.
+
+**Then close the IDE while you strip them.** Visual Studio and Rider decide a file's encoding when
+they open it and keep that decision for the buffer. A file that was opened with a mark gets one
+written back on the next save, whatever the file on disk now looks like - so an editor left running
+quietly undoes the script, file by file, as you touch them. Closing it and reopening afterwards is
+enough; the encoding is re-detected from what is actually there.
+
 ## Working on this repository
 
 The product here is configuration, and configuration fails silently: a rule that cannot report looks
