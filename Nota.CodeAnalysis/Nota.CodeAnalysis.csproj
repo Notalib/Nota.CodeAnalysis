@@ -4,9 +4,6 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <RepositoryUrl>https://github.com/Notalib/Nota.CodeAnalysis</RepositoryUrl>
     <NoDefaultExcludes>true</NoDefaultExcludes>
-    <!-- A local default only. Releases take their version from the git tag, so this is what you get
-         packing by hand and never what gets published. -->
-    <Version>2.2.1</Version>
     <PackageReadmeFile>content/README.md</PackageReadmeFile>
   </PropertyGroup>
 
@@ -25,6 +22,11 @@
     <PackageReference Include="SerilogAnalyzer" Version="0.15.0" />
     <PackageReference Include="StyleCop.Analyzers.Unstable" Version="1.2.0.556" />
     <PackageReference Include="UsingLayoutAnalyser" Version="0.3.0" />
+
+    <!-- Sets Version from the nearest git tag (Directory.Build.props declares the "v" prefix) plus a
+         height above it, so the package version can never drift from what was actually tagged. Build-
+         time only: PrivateAssets stops it flowing to consumers, who have no reason to inherit it. -->
+    <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="All" />
   </ItemGroup>
 
   <ItemGroup>
