@@ -76,6 +76,13 @@ Most of this is unsurprising. These are the ones that catch people out:
   analyzers stage puts it back, the file on disk never changes, and `dotnet format` reports nothing
   to do while `dotnet format --verify-no-changes` exits 2 forever. It is not a diagnostic and no
   severity setting reaches it. Rider is unaffected, so this only bites the command line and CI.
+- **`UA1002`** is what tells you the above, rather than leaving you to remember it. It reports once
+  per project on either of those keys being present at any value, and on
+  `dotnet_diagnostic.SA1210.severity` being turned up to `warning` or `error` - SA1210 has a fix of
+  its own, and under `dotnet format` its fix and `UA1000`'s undo each other, so the file changes on
+  every run. It arrived with UsingLayoutAnalyser 0.4.0. Silence from it is not a clean bill of
+  health: SA1210 left unset is StyleCop's own default, which no analyser can read, so unset is
+  unknown rather than safe.
 
 ## Turning things off
 

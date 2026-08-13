@@ -21,7 +21,7 @@
     <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23" />
     <PackageReference Include="SerilogAnalyzer" Version="0.15.0" />
     <PackageReference Include="StyleCop.Analyzers.Unstable" Version="1.2.0.556" />
-    <PackageReference Include="UsingLayoutAnalyser" Version="0.3.0" />
+    <PackageReference Include="UsingLayoutAnalyser" Version="0.4.0" />
 
     <!-- Sets Version from the nearest git tag (Directory.Build.props declares the "v" prefix) plus a
          height above it, so the package version can never drift from what was actually tagged. Build-
