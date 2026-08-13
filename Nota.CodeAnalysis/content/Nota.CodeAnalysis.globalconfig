@@ -7,14 +7,27 @@ end_of_line = crlf
 
 # Stylecop settings
 ## Using Directives
-dotnet_sort_system_directives_first = true
-
-# Half of this is enforced and half is not, so do not read it as a promise. SA1516 uses it to require
-# the blank line after the System group, and that part works. The per-vendor grouping the name
-# suggests - Microsoft together, Serilog together - is checked by IDE0055 only, which is off here, so
-# nothing reports it. UsingLayoutAnalyser below is what actually enforces the grouping; this stays
-# for the System boundary, and because turning it off would silence that too.
-dotnet_separate_import_directive_groups = true
+#
+# dotnet_sort_system_directives_first and dotnet_separate_import_directive_groups are deliberately
+# absent, and must stay absent. Not set to false - absent. Their presence at any value arms the
+# organize-imports stage of "dotnet format style", which reports as "error IMPORTS: Fix imports
+# ordering" and sorts flat-alphabetically after System. That puts Nota above the vendors, which is
+# the inverse of the layout UA1000 enforces below.
+#
+# The result is a loop rather than a wrong file. The style stage reorders, the analyzers stage puts
+# it back, the file on disk never changes - so "dotnet format" reports nothing to do while
+# "dotnet format --verify-no-changes" exits 2 forever, and CI cannot be made green. Measured against
+# a real consumer, not reasoned about.
+#
+# This stage is not a diagnostic. It has no ID and no severity, and setting
+# dotnet_diagnostic.IDE0055.severity = none does not reach it - which is what the earlier note here
+# got wrong: it checked what reports, not what enforces. Rider is unaffected, so this only ever bites
+# whoever formats from the command line.
+#
+# Cost of their absence, measured: SA1516 no longer reports a missing blank line between using
+# groups, which dotnet_separate_import_directive_groups = true did give us. UA1001 already requires
+# that blank line and knows first party from vendor, where SA1516 only saw first-level namespaces, so
+# what goes is the blunter duplicate of a check we still have.
 
 ## Using layout - UsingLayoutAnalyser (UA1000, UA1001)
 # System, then third party, then the consuming solution's own namespaces, as blocks separated by a

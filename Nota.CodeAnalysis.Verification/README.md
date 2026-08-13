@@ -48,15 +48,24 @@ looks redundant and is not: without it `IDE0005` silently stops reporting.
 
 ## What `verify.sh` asserts
 
-`Samples/Broken.cs` breaks each of these deliberately.
+`Samples/Broken.cs` and `Samples/Unseparated.cs` break each of these deliberately.
 
-| Rule      | What it catches                              |
-|-----------|----------------------------------------------|
-| `IDE0005` | an unused using - what CS8019 never did       |
-| `IDE0008` | `var` instead of an explicit type             |
-| `UA1000`  | using directives out of order                 |
-| `SA1208`  | System usings not placed first                |
-| `SA1516`  | no blank line after the System group          |
+| Rule      | What it catches                                  | Sample           |
+|-----------|--------------------------------------------------|------------------|
+| `IDE0005` | an unused using - what CS8019 never did          | `Broken.cs`      |
+| `IDE0008` | `var` instead of an explicit type                | `Broken.cs`      |
+| `UA1000`  | using directives out of order                    | `Broken.cs`      |
+| `SA1208`  | System usings not placed first                   | `Broken.cs`      |
+| `UA1001`  | no blank line between using blocks               | `Unseparated.cs` |
+| `SA1516`  | no blank line between members                    | `Unseparated.cs` |
+
+`SA1516` used to be the one asserting the blank line after the System group, and that worked only
+because `dotnet_separate_import_directive_groups` was set. The key had to go - at *any* value,
+including `false`, its presence arms the organize-imports stage of `dotnet format style`, which sorts
+first party above the vendors and leaves `dotnet format --verify-no-changes` failing permanently with
+nothing a consumer can do about it. `UA1001` makes that check now, and distinguishes first party from
+vendor where `SA1516` only ever saw first-level namespaces. `SA1516` stays asserted on member
+separation, which was always its own job.
 
 ## What `verify-encoding.sh` asserts
 

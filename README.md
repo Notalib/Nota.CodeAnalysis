@@ -67,6 +67,15 @@ Most of this is unsurprising. These are the ones that catch people out:
 - **`UA1000` and `UA1001`** enforce the using layout: System, then third party, then yours, as blocks
   separated by a blank line, one run per vendor. An existing repository is converted in one pass with
   `dotnet format analyzers --diagnostics UA1000 UA1001 --severity warn`.
+- **Do not set `dotnet_sort_system_directives_first` or `dotnet_separate_import_directive_groups`.**
+  Not even to `false`. This package leaves both keys out on purpose, and an `.editorconfig` entry
+  beats a global analyzer config entry, so putting one back is the one override here that breaks
+  something. Their presence at any value arms the organize-imports stage of `dotnet format style`,
+  which sorts flat-alphabetically after System and so puts your namespaces above the vendors -
+  the inverse of what `UA1000` requires. The two then take turns: the style stage reorders, the
+  analyzers stage puts it back, the file on disk never changes, and `dotnet format` reports nothing
+  to do while `dotnet format --verify-no-changes` exits 2 forever. It is not a diagnostic and no
+  severity setting reaches it. Rider is unaffected, so this only bites the command line and CI.
 
 ## Turning things off
 
