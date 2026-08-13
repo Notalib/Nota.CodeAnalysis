@@ -31,12 +31,16 @@ done
 #    IDE0005   unused using directive          the one CS8019 was supposed to cover
 #    IDE0008   var instead of an explicit type
 #    UA1000    using directives out of order   UsingLayoutAnalyser
+#    UA1001    no blank line between using blocks - see Samples/Unseparated.cs. SA1516 used to cover
+#              this, but only because dotnet_separate_import_directive_groups was set, and that key
+#              had to go: at any value it arms dotnet format's organize-imports stage, which sorts
+#              first party above the vendors and leaves --verify-no-changes failing permanently
 #    SA1208    System usings not placed first
-#    SA1516    no blank line after the System group
+#    SA1516    no blank line between members - its own job, not the using one it lost
 #    NOTA0001  a source file that is not valid UTF-8, from build/Nota.CodeAnalysis.targets - the one
 #              rule here that is a build error rather than an analyser diagnostic, and so the only
 #              one that cannot be confirmed by reading a severity out of the globalconfig
-expected=(IDE0005 IDE0008 UA1000 SA1208 SA1516 NOTA0001)
+expected=(IDE0005 IDE0008 UA1000 UA1001 SA1208 SA1516 NOTA0001)
 
 # VerifyRules is what pulls Samples/ into the compilation. Without it the project builds empty, which
 # is what every other build of this solution wants.
