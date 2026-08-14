@@ -59,6 +59,27 @@ looks redundant and is not: without it `IDE0005` silently stops reporting.
 | `UA1001`  | no blank line between using blocks               | `Unseparated.cs` |
 | `SA1516`  | no blank line between members                    | `Unseparated.cs` |
 
+Two more come from `build/Nota.CodeAnalysis.targets` rather than an analyser, and so are the only
+rules here that cannot be confirmed by reading a severity out of the globalconfig - they have to
+actually run:
+
+| Rule       | What it catches                     | Severity | Sample             |
+|------------|-------------------------------------|----------|--------------------|
+| `NOTA0001` | a file that is not valid UTF-8      | error    | `Latin1Encoded.cs` |
+| `NOTA0002` | a file with a UTF-8 byte order mark | warning  | `BomMarked.cs`     |
+
+The severities differ on purpose. `NOTA0001` is corruption and stops the build outright. A mark costs
+nothing at runtime, so `NOTA0002` reports on a developer's build and becomes an error in a pipeline
+built with `-warnaserror` - an MSBuild engine switch, so unlike `TreatWarningsAsErrors` it promotes a
+task-logged warning. The greps here accept `warning` or `error` for that reason, and so keep working
+whichever way a build is invoked.
+
+This pipeline does not pass that switch, and does not need to: `verify-encoding.sh` fails it on a
+mark anywhere in the tree, including the files no compiler opens.
+
+`BomMarked.cs` is otherwise unremarkable on purpose: the fault is its first three bytes, and it must
+not also be mis-encoded, or `NOTA0001` would cover for `NOTA0002` never firing.
+
 `SA1516` used to be the one asserting the blank line after the System group, and that worked only
 because `dotnet_separate_import_directive_groups` was set. The key had to go - at *any* value,
 including `false`, its presence arms the organize-imports stage of `dotnet format style`, which sorts
@@ -69,7 +90,7 @@ separation, which was always its own job.
 
 ## What `verify-encoding.sh` asserts
 
-Every source file is valid UTF-8, or UTF-16 carrying a BOM.
+Every source file is valid UTF-8 without a byte order mark, or UTF-16 carrying one.
 
 This is the guard that let `SA1412` be switched off. SA1412 demanded a byte order mark, which was
 never what anyone wanted, but it was the only thing standing between the build and a file saved as
@@ -79,6 +100,12 @@ already been decoded. It is also a property of `.resx` and `.json` files, which 
 
 BOM-marked UTF-16 is accepted rather than flagged. svcutil and EF migrations emit it, the compiler
 reads it correctly, and those files must keep their BOM - it is the only record of their encoding.
+
+A UTF-8 mark fails instead - here it stops the pipeline, where `NOTA0002` only warns a consumer. This
+repository ships that rule, so its own tree is the first place that has to be clean, and nothing in
+it should ever need the grace period a warning buys someone else. It is also wider than
+`NOTA0002` can be: the rule only ever sees `@(Compile)`, while this reads the `.md`, `.json` and
+`.targets` files no compiler opens.
 
 It cannot catch a wrong encoding that happens to produce valid UTF-8, the classic `â€œ` mojibake,
 which is indistinguishable from someone writing those characters on purpose.
@@ -105,8 +132,9 @@ while this project was being written, both times caught before merging:
 
 So it packs, installs into a throwaway project from a local feed, and compiles a file that breaks one
 rule per analyser - plus a deliberately mis-encoded file for `NOTA0001`, which proves
-`build/Nota.CodeAnalysis.targets` was packed and imported. It fails on `CS9057` too, since that is a
-warning nothing else would notice.
+`build/Nota.CodeAnalysis.targets` was packed and imported, and a marked one for `NOTA0002`, which is
+the only rule with an opt-out that defaults to enforcing and so the only one where a wrong default
+would ship as silence. It fails on `CS9057` too, since that is a warning nothing else would notice.
 
 It packs under a throwaway version like `0.0.0-verify.20260802143000`. That is not cosmetic: NuGet
 extracts a package once per version into the global cache, so re-packing `2.2.0` and installing
