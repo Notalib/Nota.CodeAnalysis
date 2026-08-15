@@ -64,6 +64,16 @@ Most of this is unsurprising. These are the ones that catch people out:
   no warning at all and reaches the assembly as U+FFFD replacement characters. UTF-16 with a byte
   order mark passes, since the compiler reads it correctly - and such a file must keep its BOM, which
   is the only record of its encoding.
+- **`NOTA0002` is a warning** on a source file carrying a UTF-8 byte order mark. Note that
+  `NOTA0001` says nothing about these: a BOM is legal UTF-8, so a marked file is a valid file, and
+  the two rules are looking for different things. The mark records nothing - UTF-8 is what the
+  compiler assumes when there is no mark at all - and it comes back on its own, which is the actual
+  reason this is a rule. An editor decides a file's encoding when it opens it: one that opened a file
+  with a mark writes a mark back on every later save, so a single stray file re-marks itself forever
+  and spreads to whatever else that editor touches. A warning rather than an error because a mark
+  costs nothing at runtime, so a tree that has them should say so on every build rather than be
+  unbuildable until someone sweeps it. Which of the several ways to promote a warning actually
+  promotes this one is not obvious - see below. UTF-16 is exempt, as under `NOTA0001`.
 - **`UA1000` and `UA1001`** enforce the using layout: System, then third party, then yours, as blocks
   separated by a blank line, one run per vendor. An existing repository is converted in one pass with
   `dotnet format analyzers --diagnostics UA1000 UA1001 --severity warn`.
@@ -94,21 +104,105 @@ decision you are stuck with:
 dotnet_diagnostic.IDE0008.severity = suggestion
 ```
 
-The encoding check is a build task rather than a diagnostic, so it has its own switch:
+The encoding checks are a build task rather than diagnostics, so they have their own switches:
 
 ```xml
-<NotaValidateSourceEncoding>false</NotaValidateSourceEncoding>
+<NotaValidateSourceEncoding>false</NotaValidateSourceEncoding>  <!-- NOTA0001 and NOTA0002 -->
+<NotaAllowUtf8Bom>true</NotaAllowUtf8Bom>                       <!-- NOTA0002 only -->
 ```
 
-## Upgrading from 2.1
+`NOTA0002` is only a warning, so a tree full of marks still builds; `NotaAllowUtf8Bom` is for
+silencing it entirely while that tree waits its turn, and it leaves `NOTA0001` - the one that catches
+actual corruption - in place.
 
-`SA1412`, which required every source file to carry a byte order mark, is off. It never did anything
-for the build - a file without a mark compiles fine, since the compiler assumes UTF-8 when none is
-present - and what it was quietly protecting against is now `NOTA0001`'s job, which checks the bytes
+### Making it an error, and the one that will not
+
+`NOTA0002` is logged by an MSBuild task, so it never passes through the compiler - and the property
+everyone reaches for first is a compiler setting. All four measured:
+
+| Set this                                | `NOTA0002` becomes |
+|-----------------------------------------|--------------------|
+| `dotnet build -warnaserror`             | an error           |
+| `<WarningsAsErrors>NOTA0002</...>`      | an error           |
+| `<MSBuildTreatWarningsAsErrors>true</...>` | an error        |
+| `<TreatWarningsAsErrors>true</...>`     | **still a warning**|
+
+The first row is the one that matters, and it is the arrangement to want: `-warnaserror` is the
+MSBuild engine's switch rather than the compiler's, so it takes task warnings with it, and a pipeline
+already carrying that flag fails on a marked file without anyone configuring anything. That is the
+split this severity is chosen for - a mark says so on a developer's build and stops it at the gate.
+`-warnaserror:CS0168`, or any code list that omits `NOTA0002`, leaves it alone.
+
+The last row is the genuine surprise. `TreatWarningsAsErrors` is a compiler property, and this
+warning never goes near the compiler, so a repository relying on that alone gets no gate - use the
+switch or `WarningsAsErrors` if you want one.
+
+## Keeping marks out, rather than failing on them
+
+`NOTA0002` reports a file that already has a mark. What stops one being written in the first place is
+a line in the consuming repository's own `.editorconfig`, which Rider and Visual Studio both honour:
+
+```ini
+[*]
+charset = utf-8
+```
+
+That is `utf-8` meaning *without* a mark; `utf-8-bom` is the spelling that asks for one. Worth setting
+even with `NOTA0002` on - the rule reports a file that has been re-marked, and this stops it being
+written that way at all.
+
+It does not help a file that is already open. The encoding is decided when the editor opens a file
+and kept for the buffer, so a tree is cleaned with the IDE closed and the setting keeps it clean
+afterwards.
+
+That one line also puts `dotnet format` to work, which is the part worth knowing:
+
+| `.editorconfig`         | `dotnet format whitespace`        | `--verify-no-changes` on a marked file |
+|-------------------------|-----------------------------------|----------------------------------------|
+| `charset = utf-8`       | strips the mark                   | exits 2                                |
+| `charset = utf-8-bom`   | **adds** a mark to every file     | exits 2 on an unmarked one             |
+| no `charset` key        | leaves marks exactly as they are  | exits 0                                |
+
+All three measured, on `dotnet format whitespace` with nothing else wrong in the file - the mark is a
+change in its own right, not something that has to ride along with a reformat. So with `utf-8` set,
+a repository already running `dotnet format` in CI fails on a re-marked file without `NOTA0002`
+needing to say anything, and fixes it by running the same command without `--verify-no-changes`.
+
+Two things follow from the second row. `utf-8-bom` is not merely the opposite setting - it will mark
+files that never had a mark, and it fights `NOTA0002` on every build. And `charset` unset is why
+marks survive a tree that formats itself religiously.
+
+`dotnet format` cannot fix `NOTA0002` as such. The rule is logged by an MSBuild task, so
+`dotnet format analyzers` never sees it and no code fix exists for it; what strips the mark is the
+`charset` key, working on its own. Nor does it leave UTF-16 alone the way `tools/de-bom.sh` does -
+measured, it transcodes such a file to UTF-8, which preserves the text and still compiles, but
+arrives as a whole-file diff, and a regenerated service reference or migration will be UTF-16 again
+next time the generator runs.
+
+## Upgrading
+
+The two encoding changes came one version apart and land in the same place, so they are described
+together. Where 2.1 demanded a mark and 2.2 stopped caring, 2.3 fails the build on one.
+
+**On 2.1**, `SA1412` required every source file to carry a byte order mark. It never did anything for
+the build - a file without a mark compiles fine, since the compiler assumes UTF-8 when none is
+present - and what it was quietly protecting against became `NOTA0001`'s job, which checks the bytes
 rather than the mark.
 
-Nothing forces you to remove the marks you have. If you want to, `tools/de-bom.sh` does it a tree at
-a time:
+**On 2.2**, `SA1412` is off and nothing objects to a mark either way. That is the version to strip
+them on, and the marks left behind are why 2.3 exists: with no rule pointing at them they come back,
+one editor buffer at a time.
+
+**On 2.3**, `NOTA0002` warns on any compiled file that has one, and a pipeline building with
+`-warnaserror` fails on it - which is the point of the severity rather than a side effect of it. A
+developer's build says which files are marked and carries on; CI declines to merge them.
+
+So the marks have to go before the first build that matters, not eventually. Strip them, set
+`charset = utf-8` in the same commit, and the tree stays clean on its own. `NotaAllowUtf8Bom` is
+there for a repository that needs to upgrade today and sweep next week, and it leaves `NOTA0001`
+running while it waits.
+
+`tools/de-bom.sh` strips a tree at a time:
 
 ```sh
 tools/de-bom.sh /path/to/repo            # report, change nothing
@@ -125,16 +219,20 @@ git diff --numstat | awk '$1 != 1 || $2 != 1'
 
 Silence means nothing but marks moved.
 
-Two things in that order, and both bite if you get them wrong.
+Three things in that order, and each bites if you get it wrong.
 
-**Take 2.2 first.** On 2.1.x `SA1412` still demands a mark, so stripping them before upgrading breaks
-the build on every file.
+**Take 2.2 or later first.** On 2.1.x `SA1412` still demands a mark, so stripping them before
+upgrading breaks the build on every file.
 
 **Then close the IDE while you strip them.** Visual Studio and Rider decide a file's encoding when
 they open it and keep that decision for the buffer. A file that was opened with a mark gets one
 written back on the next save, whatever the file on disk now looks like - so an editor left running
 quietly undoes the script, file by file, as you touch them. Closing it and reopening afterwards is
 enough; the encoding is re-detected from what is actually there.
+
+**Then set `charset = utf-8` before reopening it.** Stripping the marks is a one-off; the setting is
+what stops them being written again. Do it in the other order and the first save of the first file
+you touch has already put one back.
 
 ## Working on this repository
 
@@ -149,7 +247,7 @@ before changing rules.
 
 ```sh
 ./Nota.CodeAnalysis.Verification/verify.sh            # the rules report
-./Nota.CodeAnalysis.Verification/verify-encoding.sh   # source is valid UTF-8
+./Nota.CodeAnalysis.Verification/verify-encoding.sh   # source is UTF-8, and unmarked
 ```
 
 Both run on pull requests as well as on `main`.

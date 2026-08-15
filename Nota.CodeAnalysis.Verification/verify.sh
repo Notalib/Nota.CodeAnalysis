@@ -37,10 +37,13 @@ done
 #              first party above the vendors and leaves --verify-no-changes failing permanently
 #    SA1208    System usings not placed first
 #    SA1516    no blank line between members - its own job, not the using one it lost
-#    NOTA0001  a source file that is not valid UTF-8, from build/Nota.CodeAnalysis.targets - the one
-#              rule here that is a build error rather than an analyser diagnostic, and so the only
-#              one that cannot be confirmed by reading a severity out of the globalconfig
-expected=(IDE0005 IDE0008 UA1000 UA1001 SA1208 SA1516 NOTA0001)
+#    NOTA0001  a source file that is not valid UTF-8, from build/Nota.CodeAnalysis.targets - one of
+#              two rules here logged by an MSBuild task rather than an analyser, and so the only ones
+#              that cannot be confirmed by reading a severity out of the globalconfig
+#    NOTA0002  a source file carrying a UTF-8 byte order mark - Samples/BomMarked.cs. Also from the
+#              targets, and the reason the samples are exempt from verify-encoding.sh. A warning
+#              where NOTA0001 is an error, which is why the grep below accepts either
+expected=(IDE0005 IDE0008 UA1000 UA1001 SA1208 SA1516 NOTA0001 NOTA0002)
 
 # VerifyRules is what pulls Samples/ into the compilation. Without it the project builds empty, which
 # is what every other build of this solution wants.

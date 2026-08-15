@@ -130,15 +130,23 @@ printf 'namespace App;\n\n/// <summary>Saved in the wrong encoding on purpose.</
 printf '\346\370\345' >> "$app/MisEncoded.cs"
 printf '";\n}\n' >> "$app/MisEncoded.cs"
 
+# A UTF-8 byte order mark, for NOTA0002. Separate from the file above on purpose: NOTA0001 stopping
+# at the first byte of a mis-encoded file would hide it, and a mark on an otherwise clean file is the
+# case that actually occurs.
+printf '\357\273\277' > "$app/Marked.cs"
+printf 'namespace App;\n\n/// <summary>Carries a UTF-8 byte order mark on purpose.</summary>\npublic static class Marked\n{\n    /// <summary>Ordinary text.</summary>\n    public const string T = "marked";\n}\n' >> "$app/Marked.cs"
+
 output="$(cd "$app" && dotnet build --no-incremental -v:m 2>&1 || true)"
 
 #   IDE0008    the globalconfig was packed, and the props file turned rule enforcement on
 #   NOTA0001   build/Nota.CodeAnalysis.targets was packed and imported
+#   NOTA0002   the byte order mark check runs by default - it is a warning with an opt-out, so it is
+#              the rule here most easily lost without anything failing to say so
 #   SA1208     StyleCop.Analyzers reached the consumer
 #   VSTHRD100  Microsoft.VisualStudio.Threading.Analyzers reached the consumer
 #   UA1000     UsingLayoutAnalyser reached the consumer, and loaded on this Roslyn
 #   Serilog003 SerilogAnalyzer reached the consumer
-expected="IDE0008 NOTA0001 SA1208 VSTHRD100 UA1000 Serilog003"
+expected="IDE0008 NOTA0001 NOTA0002 SA1208 VSTHRD100 UA1000 Serilog003"
 
 missing=""
 for rule in $expected; do

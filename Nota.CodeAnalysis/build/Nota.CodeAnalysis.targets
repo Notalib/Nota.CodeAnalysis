@@ -2,7 +2,8 @@
 <Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
   <!--
-    Fails the build on a source file that is not valid UTF-8.
+    Fails the build on a source file that is not valid UTF-8 (NOTA0001), and warns on one carrying a
+    UTF-8 byte order mark (NOTA0002).
 
     Nothing else can do this. A file saved as Windows-1252 compiles with no warning and no error, and
     the compiler writes U+FFFD replacement characters into the assembly - measured, not assumed. An
@@ -15,11 +16,30 @@
     standing between a build and a mis-encoded file. Removing it without this would have left every
     consumer worse off than before.
 
-    Set NotaValidateSourceEncoding to false to switch it off.
+    NOTA0002 is the other half of that: with SA1412 gone nothing objected to a mark either way, and
+    marks come back on their own. An editor that opened a file with one writes one back on every
+    subsequent save, so a single stray file re-BOMs itself indefinitely and spreads to whatever else
+    that editor touches. The bytes have to be looked at to see it, which is this task's job already.
+
+    A warning where NOTA0001 is an error, and the difference is deliberate. NOTA0001 is corruption:
+    the file is already wrong and the build should stop. A mark costs nothing at runtime - it
+    compiles, it runs, it is only noise - so it says so on a developer's build and stops the one that
+    counts, because dotnet build -warnaserror is an MSBuild engine switch and takes task warnings
+    with it. A pipeline already carrying that flag fails on a marked file having configured nothing.
+    WarningsAsErrors=NOTA0002 (the SDK feeds it into MSBuildWarningsAsErrors) and
+    MSBuildTreatWarningsAsErrors do the same.
+
+    TreatWarningsAsErrors does not, however emphatically it is set - it is a compiler property, and
+    this warning is logged by a task and never passes through the compiler. A repository relying on
+    that one alone has no gate. All four measured.
+
+    Set NotaValidateSourceEncoding to false to switch both off, or NotaAllowUtf8Bom to true to keep
+    NOTA0001 while permitting marks.
   -->
 
   <PropertyGroup>
     <NotaValidateSourceEncoding Condition="'$(NotaValidateSourceEncoding)' == ''">true</NotaValidateSourceEncoding>
+    <NotaAllowUtf8Bom Condition="'$(NotaAllowUtf8Bom)' == ''">false</NotaAllowUtf8Bom>
   </PropertyGroup>
 
   <UsingTask TaskName="NotaValidateUtf8" TaskFactory="RoslynCodeTaskFactory"
@@ -27,6 +47,7 @@
              Condition="'$(NotaValidateSourceEncoding)' == 'true'">
     <ParameterGroup>
       <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <AllowByteOrderMark ParameterType="System.Boolean" Required="false" />
     </ParameterGroup>
     <Task>
       <Code Type="Fragment" Language="cs"><![CDATA[
@@ -48,6 +69,25 @@
                 && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || (bytes[0] == 0xFE && bytes[1] == 0xFF)))
             {
                 continue;
+            }
+
+            // EF BB BF, and only EF BB BF. A UTF-8 mark records nothing - UTF-8 is what the compiler
+            // assumes when there is no mark at all - so it is pure noise that editors keep putting
+            // back. Checked before the decode, not instead of it: a file can have a mark and still be
+            // mis-encoded further in, and both are worth saying.
+            if (!AllowByteOrderMark
+                && bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            {
+                Log.LogWarning(
+                    null,
+                    "NOTA0002",
+                    null,
+                    path,
+                    1,
+                    1,
+                    0,
+                    0,
+                    "File begins with a UTF-8 byte order mark. Re-save it as UTF-8 without one, or strip the tree with tools/de-bom.sh from Nota.CodeAnalysis - and close the editor while you do, since one that opened the file with a mark writes the mark back on the next save.");
             }
 
             try
@@ -80,7 +120,7 @@
   <Target Name="NotaValidateSourceEncoding"
           BeforeTargets="CoreCompile"
           Condition="'$(NotaValidateSourceEncoding)' == 'true' AND '@(Compile)' != ''">
-    <NotaValidateUtf8 Files="@(Compile)" />
+    <NotaValidateUtf8 Files="@(Compile)" AllowByteOrderMark="$(NotaAllowUtf8Bom)" />
   </Target>
 
 </Project>
