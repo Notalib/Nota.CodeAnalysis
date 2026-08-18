@@ -48,14 +48,48 @@
     <ParameterGroup>
       <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
       <AllowByteOrderMark ParameterType="System.Boolean" Required="false" />
+      <SkipRoots ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="false" />
     </ParameterGroup>
     <Task>
       <Code Type="Fragment" Language="cs"><![CDATA[
+        // Directories whose contents are not this repository's to fix. Normalised once, with a
+        // trailing separator, so that a prefix match cannot let "obj" swallow "objects".
+        var skip = new System.Collections.Generic.List<string>();
+        foreach (var root in SkipRoots ?? new Microsoft.Build.Framework.ITaskItem[0])
+        {
+            var full = root.GetMetadata("FullPath");
+            if (!string.IsNullOrEmpty(full))
+            {
+                skip.Add(full.TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar);
+            }
+        }
+
         foreach (var item in Files)
         {
             var path = item.GetMetadata("FullPath");
 
             if (!System.IO.File.Exists(path))
+            {
+                continue;
+            }
+
+            // A package's own sources are compiled into this project but belong to whoever shipped
+            // them: Microsoft.NET.Test.Sdk contributes a marked file from the NuGet cache, and no
+            // consumer can re-save a file in a shared read-only cache. Generated files under obj go
+            // the same way - they are rewritten on the next build, so a report is noise that cannot
+            // be acted on. Reporting either would leave switching the whole check off as the only
+            // way to get a clean build, which is worse than not checking those files.
+            var skipped = false;
+            foreach (var root in skip)
+            {
+                if (path.StartsWith(root, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    skipped = true;
+                    break;
+                }
+            }
+
+            if (skipped)
             {
                 continue;
             }
@@ -120,7 +154,15 @@
   <Target Name="NotaValidateSourceEncoding"
           BeforeTargets="CoreCompile"
           Condition="'$(NotaValidateSourceEncoding)' == 'true' AND '@(Compile)' != ''">
-    <NotaValidateUtf8 Files="@(Compile)" AllowByteOrderMark="$(NotaAllowUtf8Bom)" />
+    <ItemGroup>
+      <!-- NuGetPackageRoot is empty in some restore-less contexts, and an empty root would match
+           every path and check nothing, so it is only added when it has a value. -->
+      <NotaEncodingSkipRoot Include="$(NuGetPackageRoot)" Condition="'$(NuGetPackageRoot)' != ''" />
+      <NotaEncodingSkipRoot Include="$(IntermediateOutputPath)" Condition="'$(IntermediateOutputPath)' != ''" />
+    </ItemGroup>
+
+    <NotaValidateUtf8 Files="@(Compile)" AllowByteOrderMark="$(NotaAllowUtf8Bom)"
+                      SkipRoots="@(NotaEncodingSkipRoot)" />
   </Target>
 
 </Project>

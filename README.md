@@ -74,6 +74,13 @@ Most of this is unsurprising. These are the ones that catch people out:
   costs nothing at runtime, so a tree that has them should say so on every build rather than be
   unbuildable until someone sweeps it. Which of the several ways to promote a warning actually
   promotes this one is not obvious - see below. UTF-16 is exempt, as under `NOTA0001`.
+- **Both only look at files you wrote.** Sources under the NuGet cache and generated sources under
+  `obj` are compiled into your project but are not yours to re-save, so neither rule reports them.
+  `Microsoft.NET.Test.Sdk` is the one that made this necessary: it contributes a marked file of its
+  own to every test project, from a read-only shared cache that restores it the moment it is touched.
+  Reporting that left `NotaValidateSourceEncoding=false` as the only route to a clean build, which
+  throws away `NOTA0001` too - a rule against corruption talking people into switching off the only
+  guard against it.
 - **`UA1000` and `UA1001`** enforce the using layout: System, then third party, then yours, as blocks
   separated by a blank line, one run per vendor. An existing repository is converted in one pass with
   `dotnet format analyzers --diagnostics UA1000 UA1001 --severity warn`.

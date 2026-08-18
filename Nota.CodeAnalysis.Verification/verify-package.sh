@@ -80,6 +80,11 @@ cat > "$app/App.csproj" <<EOF
     <PackageReference Include="Nota.CodeAnalysis" Version="$version" />
     <!-- SerilogAnalyzer has nothing to say without Serilog present. -->
     <PackageReference Include="Serilog" Version="4.2.0" />
+    <!-- Here for what it drags in rather than what it does: it contributes a source file of its own
+         to @(Compile), from the read-only NuGet cache, and that file carries a UTF-8 byte order
+         mark. NOTA0002 reported it on every test project in existence until the encoding check
+         learned to skip files the consumer did not write and cannot re-save. -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
   </ItemGroup>
 </Project>
 EOF
@@ -154,6 +159,18 @@ for rule in $expected; do
         missing="$missing $rule"
     fi
 done
+
+# NOTA0001 and NOTA0002 must report the consumer's own files and nothing else. A file inside the
+# NuGet cache is not the consumer's to fix - it is shared, read-only, and restored again the moment
+# it is touched - so reporting one leaves switching the whole check off as the only way to a clean
+# build. Checked by name rather than by count: the rules are expected to fire above, so a count says
+# nothing about which file they fired on.
+foreign="$(printf '%s' "$output" | grep -E '(warning|error) NOTA000[0-9]' | grep -iE '[/\\]\.nuget[/\\]|[/\\]packages[/\\]' || true)"
+if [ -n "$foreign" ]; then
+    printf '\nThe encoding check reported a file the consumer cannot fix:\n%s\n' "$foreign" >&2
+    printf 'It lives in the NuGet cache. Skip it rather than asking anyone to re-save it.\n\n' >&2
+    exit 1
+fi
 
 # CS9057 is never acceptable: it means an analyser referenced a newer compiler than the one running,
 # and was skipped. It is a warning, so nothing else would fail.

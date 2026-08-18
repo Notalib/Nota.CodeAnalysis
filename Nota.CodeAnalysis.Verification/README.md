@@ -136,6 +136,18 @@ rule per analyser - plus a deliberately mis-encoded file for `NOTA0001`, which p
 the only rule with an opt-out that defaults to enforcing and so the only one where a wrong default
 would ship as silence. It fails on `CS9057` too, since that is a warning nothing else would notice.
 
+It also asserts the opposite of everything above: that `NOTA0001` and `NOTA0002` report the
+consumer's own files and **nothing else**. The throwaway project references `Microsoft.NET.Test.Sdk`
+purely for what that drags in - a source file of its own, from the read-only NuGet cache, carrying a
+UTF-8 byte order mark. Every test project on earth compiles that file, and the encoding check
+reported it on all of them until it learned to skip what the consumer did not write.
+
+A false positive there is worse than a missing check, which is why it is asserted rather than left to
+notice: the file cannot be re-saved, it is restored the moment it is touched, and it is shared by
+every project on the machine. The only way out was `NotaValidateSourceEncoding=false`, which throws
+away `NOTA0001` as well - so a rule meant to catch corruption talked people into switching off the
+one thing standing between them and it.
+
 It packs under a throwaway version like `0.0.0-verify.20260802143000`. That is not cosmetic: NuGet
 extracts a package once per version into the global cache, so re-packing `2.2.0` and installing
 `2.2.0` gets whatever was extracted first, and the change under test never reaches the consumer. This
